@@ -4,10 +4,32 @@ const subscribeButton = document.getElementById("subscribe");
 const toast = document.getElementById("toast");
 const runTime = document.getElementById("run-time");
 
+const secretKey = "default-secret-key";
+
 const showToast = (message) => {
   toast.textContent = message;
   toast.classList.add("show");
   setTimeout(() => toast.classList.remove("show"), 2500);
+};
+
+const getAccessToken = async () => {
+  try {
+    const response = await fetch(`${apiBase}/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret_key: secretKey }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to get access token");
+    }
+
+    const data = await response.json();
+    return data.access_token;
+  } catch {
+    showToast("Failed to authenticate");
+    return null;
+  }
 };
 
 const to12Hour = (time24) => {
@@ -39,6 +61,8 @@ const loadConfig = async () => {
   }
 };
 
+let accessToken = null;
+
 const subscribe = async () => {
   const email = emailInput.value.trim();
   if (!email) {
@@ -49,9 +73,17 @@ const subscribe = async () => {
   subscribeButton.disabled = true;
 
   try {
+    if (!accessToken) {
+      subscribeButton.disabled = false;
+      return;
+    }
+
     const response = await fetch(`${apiBase}/subscribe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`
+      },
       body: JSON.stringify({ email }),
     });
 
@@ -61,6 +93,10 @@ const subscribe = async () => {
       showToast(data.message || "Subscribed");
       emailInput.value = "";
     } else {
+      if (response.status === 401 || response.status === 403) {
+        window.location.reload();
+        return;
+      }
       showToast(data.detail || "Error subscribing");
     }
   } catch {
@@ -72,4 +108,9 @@ const subscribe = async () => {
 
 subscribeButton.addEventListener("click", subscribe);
 
-loadConfig();
+const init = async () => {
+  await loadConfig();
+  accessToken = await getAccessToken();
+};
+
+init();

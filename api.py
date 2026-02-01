@@ -3,43 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from models import SubscribeRequest, SubscriberStore
+from models.auth import verify_api_key, create_access_token
+from models.token import SecretKeyRequest, TokenResponse
 from main import run_ipo_automation
 
 
 store = SubscriberStore()
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    trigger_time = load_trigger_time()
-    if trigger_time:
-        hour, minute = trigger_time
-        scheduler.add_job(scheduled_run, CronTrigger(hour=hour, minute=minute))
-        scheduler.start()
-    try:
-        yield
-    finally:
-        if scheduler.running:
-            scheduler.shutdown()
-
-
-#app = FastAPI(lifespan=lifespan)
 app = FastAPI()
-
-WEB_DIR = Path(__file__).resolve().parent / "web"
-INDEX_HTML = WEB_DIR / "index.html"
-
-app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,37 +30,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+async def _auth_middleware(request: Request, call_next):
+    try:
+        await verify_api_key(request)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
+
+app.middleware("http")(_auth_middleware)
+
+WEB_DIR = Path(__file__).resolve().parent / "web"
+INDEX_HTML = WEB_DIR / "index.html"
+
+app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
 scheduler = AsyncIOScheduler()
 
 @app.post("/subscribe")
 def subscribe(payload: SubscribeRequest):
-    try:
-        added = store.add(payload.email)
-        if added:
-            return {"status": "success", "message": "Successfully subscribed"}
-        return {"status": "already", "message": "Already subscribed"}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    added = store.add(payload.email)
+    if added:
+        return {"status": "success", "message": "Successfully subscribed"}
+    return {"status": "already", "message": "Already subscribed"}
 
 
 @app.post("/run")
 def run_automation():
-    try:
-        subscribers = store.list_all()
-        errors = []
-
-        for email in subscribers:
-            try:
-                run_ipo_automation(email)
-            except Exception as exc:
-                errors.append({"email": email, "error": str(exc)})
-
-        if errors:
-            return {"status": "error", "message": "Some runs failed", "errors": errors}
-
-        return {"status": "success", "message": "Run completed", "processed": len(subscribers)}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    subscribers = store.list_all()
+    for email in subscribers: 
+        run_ipo_automation(email)
 
 
 @app.get("/")
@@ -87,6 +68,17 @@ def serve_index():
     if not INDEX_HTML.exists():
         raise HTTPException(status_code=404, detail="index.html not found")
     return FileResponse(INDEX_HTML)
+
+
+@app.post("/token")
+def get_access_token(payload: SecretKeyRequest):
+    try:
+        token = create_access_token(payload.secret_key)
+        return TokenResponse(access_token=token)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 def load_trigger_time() -> tuple[int, int] | None:
