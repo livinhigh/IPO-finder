@@ -61,6 +61,7 @@ def run_automation():
     subscribers = store.list_all()
     for email in subscribers: 
         run_ipo_automation(email)
+    return {"status": "success", "message": "Automation run completed"}
 
 
 @app.get("/")
