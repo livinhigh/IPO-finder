@@ -33,7 +33,8 @@ async def lifespan(_: FastAPI):
             scheduler.shutdown()
 
 
-app = FastAPI(lifespan=lifespan)
+#app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 INDEX_HTML = WEB_DIR / "index.html"
