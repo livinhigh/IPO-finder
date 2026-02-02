@@ -1,4 +1,4 @@
-const apiBase = "http://localhost:8000";
+const apiBase = "https://ipo.ivanjt.tech";
 const emailInput = document.getElementById("email");
 const subscribeButton = document.getElementById("subscribe");
 const toast = document.getElementById("toast");
