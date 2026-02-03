@@ -15,7 +15,8 @@ CONFIG_PATH = Path(__file__).resolve().parent / "web" / "config.json"
 
 def load_config_dates() -> tuple[str, str]:
     today = datetime.now().strftime('%Y-%m-%d')
-
+    return today, today
+    
     if not CONFIG_PATH.exists():
         return today, today
 
