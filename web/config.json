@@ -1,5 +1,5 @@
 {
-  "startDate": "2026-01-28",
-  "endDate": "2026-02-01",
+  "startDate": "today",
+  "endDate": "today",
   "triggerTime": "09:00"
 }
